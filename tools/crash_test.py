@@ -44,7 +44,10 @@ def build_topic() -> int:
 
 def fresh() -> None:
     for p in (DB, pathlib.Path(str(DB) + ".wal"), OFFSETS):
-        p.unlink(missing_ok=True)
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def run_consumer(crash_at: int | None = None) -> int:
@@ -64,12 +67,15 @@ def run_consumer(crash_at: int | None = None) -> int:
 
 
 def stats() -> tuple[int, int]:
-    con = duckdb.connect(str(DB), read_only=True)
-    total, distinct = con.execute(
-        "select count(*), count(distinct event_id) from bronze_events_stream"
-    ).fetchone()
-    con.close()
-    return total, distinct
+    cmd = [
+        sys.executable, "-c",
+        f"import duckdb; con = duckdb.connect(r'{DB}', read_only=True); "
+        "t, d = con.execute('select count(*), count(distinct event_id) from bronze_events_stream').fetchone(); "
+        "con.close(); print(f'{t},{d}')"
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    t, d = res.stdout.strip().split(",")
+    return int(t), int(d)
 
 
 def main(strict: bool = False) -> int:
